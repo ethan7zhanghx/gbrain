@@ -22,6 +22,7 @@ eval/data/amara-life-v1/_cache/
 # Agentic Data: 部门业务数据（涉密，禁止提交）
 # ============================================================
 data/raw/
+data/mappings/
 data/exports/
 *.xlsx
 *.xls

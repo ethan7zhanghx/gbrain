@@ -1307,44 +1307,48 @@ const find_orphans: Operation = {
   cliHints: { name: 'orphans', hidden: true },
 };
 
-// --- Excel Import ---
+// --- Excel Import (two deterministic tools, no LLM inside) ---
 
-const import_excel: Operation = {
-  name: 'import_excel',
-  description: 'Import an Excel file into gbrain. LLM auto-infers field mapping, creates entity pages and relationship links. Supports any Excel format — mapping schemas are cached for reuse.',
+const read_excel: Operation = {
+  name: 'read_excel',
+  description: 'Read an Excel file and return sheet names, headers, and sample rows. Use this to understand the structure before importing. The Agent should use this output to infer a mapping schema, then pass it to import_with_mapping.',
   params: {
     file_path: { type: 'string', required: true, description: 'Path to the Excel file' },
-    sheet: { type: 'string', description: 'Specific sheet name to import (default: all sheets)' },
-    dry_run: { type: 'boolean', description: 'Preview mode: show mapping and planned imports without executing' },
+    sheet: { type: 'string', description: 'Specific sheet name (default: all sheets)' },
+    sample_size: { type: 'number', description: 'Number of sample rows to return per sheet (default: 5)' },
+  },
+  handler: async (_ctx, p) => {
+    const { readExcel } = await import('./import-excel.ts');
+    return readExcel(p.file_path as string, {
+      sheet: p.sheet as string | undefined,
+      sampleSize: (p.sample_size as number) || 5,
+    });
+  },
+  cliHints: { name: 'read-excel', positional: ['file_path'] },
+};
+
+const import_with_mapping: Operation = {
+  name: 'import_with_mapping',
+  description: 'Import Excel data into gbrain using a mapping schema. The mapping defines which columns map to which entity fields, what relationships to create, and how to generate compiled truth. The Agent should first call read_excel, infer a mapping, then pass it here.',
+  params: {
+    file_path: { type: 'string', required: true, description: 'Path to the Excel file' },
+    sheet: { type: 'string', required: true, description: 'Sheet name to import' },
+    mapping: { type: 'object', required: true, description: 'Mapping schema: { primary_entity: { type, slug_prefix, name_column }, field_mappings: { col: field }, entity_extractions: [{ column, entity_type, slug_prefix, relation_to_primary, extra_fields }], compiled_truth_template: "..." }' },
   },
   mutating: true,
   handler: async (ctx, p) => {
-    const { importExcel } = await import('./import-excel.ts');
-    const filePath = p.file_path as string;
-    const sheet = p.sheet as string | undefined;
-    const dryRun = (p.dry_run as boolean) || false;
-
-    if (ctx.dryRun || dryRun) {
-      const { readExcel, hashHeaders, loadMappingSchema, inferMapping } = await import('./import-excel.ts');
-      const sheets = readExcel(filePath, sheet);
-      const previews = [];
-      for (const s of sheets) {
-        const headerHash = hashHeaders(s.headers);
-        const existingMapping = loadMappingSchema(headerHash);
-        previews.push({
-          sheet: s.sheet_name,
-          rows: s.rows.length,
-          headers: s.headers,
-          has_cached_mapping: !!existingMapping,
-          header_hash: headerHash,
-        });
-      }
-      return { dry_run: true, sheets: previews };
-    }
-
-    return importExcel(ctx.engine, filePath, { sheet, dryRun: false });
+    const { importWithMapping } = await import('./import-excel.ts');
+    if (ctx.dryRun) return { dry_run: true, action: 'import_with_mapping', file: p.file_path, sheet: p.sheet };
+    // CLI passes mapping as JSON string; MCP passes it as object
+    const mapping = typeof p.mapping === 'string' ? JSON.parse(p.mapping as string) : p.mapping;
+    return importWithMapping(
+      ctx.engine,
+      p.file_path as string,
+      p.sheet as string,
+      mapping as any,
+    );
   },
-  cliHints: { name: 'import-excel', positional: ['file_path'] },
+  cliHints: { name: 'import-with-mapping', positional: ['file_path', 'sheet'] },
 };
 
 // --- Exports ---
@@ -1378,7 +1382,7 @@ export const operations: Operation[] = [
   // Orphans
   find_orphans,
   // Excel import
-  import_excel,
+  read_excel, import_with_mapping,
 ];
 
 export const operationsByName = Object.fromEntries(
