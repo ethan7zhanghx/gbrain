@@ -294,7 +294,29 @@ export async function importWithMapping(
         const relatedName = String(row[extraction.column] || '').trim();
         if (!relatedName) continue;
 
-        const relatedSlug = chineseToSlug(relatedName, extraction.slug_prefix);
+        // 内外部人员区分：
+        //   managed_by → 百度内部人员（staff/），slug 只用人名，不拼企业名
+        //   contacted_by → 外部联系人（people/），slug 拼人名+企业名消歧
+        const isInternal = extraction.relation_to_primary === 'managed_by';
+        let relatedSlug: string;
+        let relatedType: string;
+
+        if (isInternal) {
+          // 百度内部人员：slug 前缀 staff/，不拼企业名（同一个人对接多家企业）
+          relatedSlug = chineseToSlug(relatedName, 'staff');
+          relatedType = 'person';
+        } else if (extraction.relation_to_primary === 'contacted_by') {
+          // 外部联系人：slug 拼上企业名消歧（不同企业的同名人是不同的人）
+          const companySuffix = entityName
+            ? '-' + chineseToSlug(entityName, '').replace(/^\//, '')
+            : '';
+          relatedSlug = chineseToSlug(relatedName, 'people') + companySuffix;
+          relatedType = 'person';
+        } else {
+          // 其他关系类型：保持原有逻辑
+          relatedSlug = chineseToSlug(relatedName, extraction.slug_prefix);
+          relatedType = extraction.entity_type;
+        }
 
         const relatedExists = await engine.getPage(relatedSlug);
         if (!relatedExists) {
@@ -306,10 +328,21 @@ export async function importWithMapping(
             }
           }
 
+          // 内部人员标记
+          if (isInternal) {
+            relatedFm.is_internal = true;
+          }
+          // 外部联系人标记所属企业
+          if (extraction.relation_to_primary === 'contacted_by') {
+            relatedFm.company = entityName;
+          }
+
           await engine.putPage(relatedSlug, {
-            type: extraction.entity_type as any,
+            type: relatedType as any,
             title: relatedName,
-            compiled_truth: `${relatedName}。`,
+            compiled_truth: isInternal
+              ? `${relatedName}，百度内部对接人。`
+              : `${relatedName}，${entityName}。`,
             frontmatter: relatedFm,
           });
         }

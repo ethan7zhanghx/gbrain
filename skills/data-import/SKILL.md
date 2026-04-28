@@ -61,16 +61,27 @@ read_excel({ file_path: "<Excel 文件路径>" })
    - 跳过明显无用的列（纯序号、空列）
 
 3. **关联实体抽取**：哪些列代表独立实体需要拆出来？
-   - "对接人" → 拆出 person 实体，关系 contacted_by
-   - "百度对接人" → 拆出 person 实体，关系 managed_by
+   - "对接人"/"联系人"/"负责人" → 拆出 person 实体，关系 **contacted_by**（外部联系人）
+   - "百度对接人"/"跟进人"/"提报人" → 拆出 person 实体，关系 **managed_by**（百度内部人员）
    - "开发企业" → 拆出 company 实体，关系 developed_by
    - extra_fields 定义关联实体的附加属性（如手机号、职位属于对接人）
 
 4. **compiled_truth_template**：用 {列名} 占位符构造一段摘要文字
 
+**关键：内外部人员区分规则**
+
+这是必须正确判断的。tool 会根据 relation_to_primary 自动处理：
+- `managed_by` → 百度内部人员，存入 `staff/` 前缀，slug 只用人名，标记 `is_internal: true`
+- `contacted_by` → 外部联系人，存入 `people/` 前缀，slug 拼人名+企业名（消歧同名人）
+
+判断依据：
+- 列名包含"百度"/"跟进"/"提报"/"我方" → managed_by
+- 列名是"对接人"/"联系人"/"负责人"且上下文表明是对方的 → contacted_by
+- 如果不确定，看列的数据：有手机号/邮箱的通常是外部联系人，只有姓名的通常是百度对接人
+
 关系类型参考：
-- contacted_by: 对方联系人
-- managed_by: 我方对接人
+- contacted_by: 对方联系人（外部）
+- managed_by: 我方对接人（百度内部）
 - works_at: 任职于
 - source_from: 关系来源
 - has_product: 拥有产品
