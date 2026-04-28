@@ -1307,6 +1307,46 @@ const find_orphans: Operation = {
   cliHints: { name: 'orphans', hidden: true },
 };
 
+// --- Excel Import ---
+
+const import_excel: Operation = {
+  name: 'import_excel',
+  description: 'Import an Excel file into gbrain. LLM auto-infers field mapping, creates entity pages and relationship links. Supports any Excel format — mapping schemas are cached for reuse.',
+  params: {
+    file_path: { type: 'string', required: true, description: 'Path to the Excel file' },
+    sheet: { type: 'string', description: 'Specific sheet name to import (default: all sheets)' },
+    dry_run: { type: 'boolean', description: 'Preview mode: show mapping and planned imports without executing' },
+  },
+  mutating: true,
+  handler: async (ctx, p) => {
+    const { importExcel } = await import('./import-excel.ts');
+    const filePath = p.file_path as string;
+    const sheet = p.sheet as string | undefined;
+    const dryRun = (p.dry_run as boolean) || false;
+
+    if (ctx.dryRun || dryRun) {
+      const { readExcel, hashHeaders, loadMappingSchema, inferMapping } = await import('./import-excel.ts');
+      const sheets = readExcel(filePath, sheet);
+      const previews = [];
+      for (const s of sheets) {
+        const headerHash = hashHeaders(s.headers);
+        const existingMapping = loadMappingSchema(headerHash);
+        previews.push({
+          sheet: s.sheet_name,
+          rows: s.rows.length,
+          headers: s.headers,
+          has_cached_mapping: !!existingMapping,
+          header_hash: headerHash,
+        });
+      }
+      return { dry_run: true, sheets: previews };
+    }
+
+    return importExcel(ctx.engine, filePath, { sheet, dryRun: false });
+  },
+  cliHints: { name: 'import-excel', positional: ['file_path'] },
+};
+
 // --- Exports ---
 
 export const operations: Operation[] = [
@@ -1337,6 +1377,8 @@ export const operations: Operation[] = [
   pause_job, resume_job, replay_job, send_job_message,
   // Orphans
   find_orphans,
+  // Excel import
+  import_excel,
 ];
 
 export const operationsByName = Object.fromEntries(

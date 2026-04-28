@@ -57,9 +57,11 @@
     "marked": "^18.0.0",
     "openai": "^4.0.0",
     "pgvector": "^0.2.0",
+    "pinyin-pro": "^3.28.1",
     "postgres": "^3.4.0",
     "tree-sitter-wasms": "0.1.13",
-    "web-tree-sitter": "0.22.6"
+    "web-tree-sitter": "0.22.6",
+    "xlsx": "^0.18.5"
   },
   "devDependencies": {
     "@types/bun": "latest",
